@@ -7,8 +7,12 @@
 
 @section('content')
 <div class="card">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-box-arrow-up me-2"></i>Laporan Barang Keluar</span>
+        <a href="{{ route('laporan.barang-keluar', array_merge(request()->all(), ['export' => 'pdf'])) }}"
+           class="btn btn-sm btn-danger">
+            <i class="bi bi-file-pdf me-1"></i>Export PDF
+        </a>
     </div>
     <div class="card-body">
         <form method="GET" class="row g-2 mb-3">
