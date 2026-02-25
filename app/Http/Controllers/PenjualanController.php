@@ -46,9 +46,16 @@ class PenjualanController extends Controller
 
         // Cek stok semua item sebelum proses
         foreach ($request->items as $item) {
-            $barang = Barang::find($item['barang_id']);
+            $barang      = Barang::find($item['barang_id']);
+            $stokMinimum = $barang->stok_minimum ?? 10;
+            $sisaStok    = $barang->stok_total - $item['qty'];
+
             if ($barang->stok_total < $item['qty']) {
-                return back()->with('error', "Stok {$barang->nama_barang} tidak mencukupi. Stok: {$barang->stok_total}")->withInput();
+                return back()->with('error', "Stok {$barang->nama_barang} tidak mencukupi. Stok saat ini: {$barang->stok_total}.")->withInput();
+            }
+
+            if ($sisaStok < $stokMinimum) {
+                return back()->with('error', "Penjualan {$barang->nama_barang} tidak dapat diproses. Sisa stok setelah penjualan ({$sisaStok}) akan berada di bawah batas minimum ({$stokMinimum}).")->withInput();
             }
         }
 

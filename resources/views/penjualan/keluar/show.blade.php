@@ -132,7 +132,7 @@
         <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #333; padding-bottom: 15px; margin-bottom: 20px;">
             <div>
                 <h2 style="margin:0; font-size: 22px;">Berkah Sedati</h2>
-                <p style="margin:4px 0; font-size: 12px; color: #555;">Alamat Perusahaan, Kota, Kode Pos</p>
+                <p style="margin:4px 0; font-size: 12px; color: #555;">Jl.Gedangan  Kec.Gedangan Sidoarjo, Kabupaten Sidoarjo, Jawa Timur</p>
                 <p style="margin:4px 0; font-size: 12px; color: #555;">Telp: (021) 0000-0000 | Email: info@perusahaan.com</p>
             </div>
             <div style="text-align: right;">
