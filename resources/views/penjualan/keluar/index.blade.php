@@ -44,7 +44,7 @@
                         <th>Total HPP</th>
                         <th>Laba</th>
                         <th>Keterangan</th>
-                        <th width="80">Aksi</th>
+                        <th width="100">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -65,9 +65,18 @@
                         </td>
                         <td>{{ $p->keterangan ?? '-' }}</td>
                         <td>
-                            <a href="{{ route('penjualan.keluar.show', $p) }}" class="btn btn-sm btn-info text-white">
+                            <a href="{{ route('penjualan.keluar.show', $p) }}"
+                               class="btn btn-sm btn-info text-white" title="Detail">
                                 <i class="bi bi-eye"></i>
                             </a>
+                            <form action="{{ route('penjualan.keluar.destroy', $p) }}" method="POST"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Hapus penjualan {{ $p->no_invoice }}? Stok akan dikembalikan.')">
+                                @csrf @method('DELETE')
+                                <button class="btn btn-sm btn-danger" title="Hapus">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     @empty

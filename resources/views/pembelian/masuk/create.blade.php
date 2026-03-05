@@ -49,9 +49,10 @@
                     <thead class="table-light">
                         <tr>
                             <th>Barang</th>
-                            <th width="120">Qty</th>
-                            <th width="160">Harga Beli (Rp)</th>
-                            <th width="160">Subtotal</th>
+                            <th width="90">Qty</th>
+                            <th width="150">Harga Beli (Rp)</th>
+                            <th width="150">Expired Date</th>
+                            <th width="140">Subtotal</th>
                             <th width="50"></th>
                         </tr>
                     </thead>
@@ -67,13 +68,17 @@
                             </td>
                             <td><input type="number" name="items[0][qty]" class="form-control form-control-sm input-qty" min="1" value="1" required></td>
                             <td><input type="number" name="items[0][harga_beli]" class="form-control form-control-sm input-harga" min="0" value="0" required></td>
+                            <td>
+                                <input type="date" name="items[0][expired_date]" class="form-control form-control-sm input-expired">
+                                <small class="text-muted" style="font-size:10px;">Opsional</small>
+                            </td>
                             <td><input type="text" class="form-control form-control-sm input-subtotal" value="0" disabled></td>
                             <td><button type="button" class="btn btn-sm btn-danger btn-hapus-row"><i class="bi bi-trash"></i></button></td>
                         </tr>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="3" class="text-end fw-semibold">Total</td>
+                            <td colspan="4" class="text-end fw-semibold">Total</td>
                             <td><input type="text" id="grandTotal" class="form-control form-control-sm fw-bold" value="0" disabled></td>
                             <td></td>
                         </tr>
@@ -103,38 +108,41 @@
     }
 
     function hitungSubtotal(row) {
-        const qty = parseFloat(row.querySelector('.input-qty').value) || 0;
-        const harga = parseFloat(row.querySelector('.input-harga').value) || 0;
-        const subtotal = qty * harga;
-        row.querySelector('.input-subtotal').value = formatRupiah(subtotal);
+        const qty    = parseFloat(row.querySelector('.input-qty').value) || 0;
+        const harga  = parseFloat(row.querySelector('.input-harga').value) || 0;
+        row.querySelector('.input-subtotal').value = formatRupiah(qty * harga);
         hitungTotal();
     }
 
     function hitungTotal() {
         let total = 0;
         document.querySelectorAll('#itemBody tr').forEach(row => {
-            const qty = parseFloat(row.querySelector('.input-qty').value) || 0;
+            const qty   = parseFloat(row.querySelector('.input-qty').value) || 0;
             const harga = parseFloat(row.querySelector('.input-harga').value) || 0;
             total += qty * harga;
         });
         document.getElementById('grandTotal').value = formatRupiah(total);
     }
 
-    document.getElementById('btnTambahRow').addEventListener('click', function () {
-        const tbody = document.getElementById('itemBody');
+    function buatRowBaru(index) {
         const tr = document.createElement('tr');
-        tr.id = 'row-' + rowIndex;
+        tr.id = 'row-' + index;
         tr.innerHTML = `
-            <td><select name="items[${rowIndex}][barang_id]" class="form-select form-select-sm select-barang" required>
-                <option value="">-- Pilih Barang --</option>${barangOptions}</select></td>
-            <td><input type="number" name="items[${rowIndex}][qty]" class="form-control form-control-sm input-qty" min="1" value="1" required></td>
-            <td><input type="number" name="items[${rowIndex}][harga_beli]" class="form-control form-control-sm input-harga" min="0" value="0" required></td>
+            <td>
+                <select name="items[${index}][barang_id]" class="form-select form-select-sm select-barang" required>
+                    <option value="">-- Pilih Barang --</option>${barangOptions}
+                </select>
+            </td>
+            <td><input type="number" name="items[${index}][qty]" class="form-control form-control-sm input-qty" min="1" value="1" required></td>
+            <td><input type="number" name="items[${index}][harga_beli]" class="form-control form-control-sm input-harga" min="0" value="0" required></td>
+            <td>
+                <input type="date" name="items[${index}][expired_date]" class="form-control form-control-sm input-expired">
+                <small class="text-muted" style="font-size:10px;">Opsional</small>
+            </td>
             <td><input type="text" class="form-control form-control-sm input-subtotal" value="0" disabled></td>
             <td><button type="button" class="btn btn-sm btn-danger btn-hapus-row"><i class="bi bi-trash"></i></button></td>`;
-        tbody.appendChild(tr);
-        bindRowEvents(tr);
-        rowIndex++;
-    });
+        return tr;
+    }
 
     function bindRowEvents(row) {
         row.querySelector('.input-qty').addEventListener('input', () => hitungSubtotal(row));
@@ -147,9 +155,15 @@
         });
     }
 
+    document.getElementById('btnTambahRow').addEventListener('click', function () {
+        const tr = buatRowBaru(rowIndex);
+        document.getElementById('itemBody').appendChild(tr);
+        bindRowEvents(tr);
+        rowIndex++;
+    });
+
     // Bind row pertama
-    const firstRow = document.querySelector('#itemBody tr');
-    bindRowEvents(firstRow);
+    bindRowEvents(document.querySelector('#itemBody tr'));
 </script>
 @endpush
 @endsection

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Barang;
+use App\Models\BarangBatch;
 use App\Models\PembelianDetail;
 use App\Models\Penjualan;
 use App\Models\PenjualanDetail;
@@ -15,11 +16,11 @@ class PenjualanController extends Controller
     public function keluarIndex(Request $request)
     {
         $query = Penjualan::query();
-        if ($request->dari) $query->whereDate('tanggal_penjualan', '>=', $request->dari);
+        if ($request->dari)   $query->whereDate('tanggal_penjualan', '>=', $request->dari);
         if ($request->sampai) $query->whereDate('tanggal_penjualan', '<=', $request->sampai);
         if ($request->search) {
             $query->where('no_invoice', 'like', '%' . $request->search . '%')
-                ->orWhere('nama_pembeli', 'like', '%' . $request->search . '%');
+                  ->orWhere('nama_pembeli', 'like', '%' . $request->search . '%');
         }
         $penjualan = $query->orderByDesc('tanggal_penjualan')->paginate(15)->withQueryString();
         return view('penjualan.keluar.index', compact('penjualan'));
@@ -27,8 +28,8 @@ class PenjualanController extends Controller
 
     public function keluarCreate()
     {
-        $barang     = Barang::with('satuan')->where('stok_total', '>', 0)->orderBy('nama_barang')->get();
-        $noInvoice  = 'INV-' . date('Ymd') . '-' . str_pad(
+        $barang    = Barang::with('satuan')->where('stok_total', '>', 0)->orderBy('nama_barang')->get();
+        $noInvoice = 'INV-' . date('Ymd') . '-' . str_pad(
             (Penjualan::whereDate('created_at', today())->count() + 1), 3, '0', STR_PAD_LEFT
         );
         return view('penjualan.keluar.create', compact('barang', 'noInvoice'));
@@ -37,14 +38,13 @@ class PenjualanController extends Controller
     public function keluarStore(Request $request)
     {
         $request->validate([
-            'tanggal_penjualan' => 'required|date',
-            'items'             => 'required|array|min:1',
-            'items.*.barang_id' => 'required|exists:barang,id',
-            'items.*.qty'       => 'required|integer|min:1',
+            'tanggal_penjualan'  => 'required|date',
+            'items'              => 'required|array|min:1',
+            'items.*.barang_id'  => 'required|exists:barang,id',
+            'items.*.qty'        => 'required|integer|min:1',
             'items.*.harga_jual' => 'required|numeric|min:0',
         ]);
 
-        // Cek stok semua item sebelum proses
         foreach ($request->items as $item) {
             $barang      = Barang::find($item['barang_id']);
             $stokMinimum = $barang->stok_minimum ?? 10;
@@ -74,8 +74,8 @@ class PenjualanController extends Controller
                 $subtotal  = $qty * $hargaJual;
                 $totalHarga += $subtotal;
 
-                // ===== FIFO ALGORITHM =====
-                $hpp = 0;
+                // FIFO
+                $hpp            = 0;
                 $sisaQtyDiambil = $qty;
 
                 $batches = PembelianDetail::where('barang_id', $item['barang_id'])
@@ -86,12 +86,9 @@ class PenjualanController extends Controller
 
                 foreach ($batches as $batch) {
                     if ($sisaQtyDiambil <= 0) break;
-
                     $ambil = min($batch->sisa_qty, $sisaQtyDiambil);
                     $hpp  += $ambil * $batch->harga_beli;
                     $sisaQtyDiambil -= $ambil;
-
-                    // Kurangi sisa_qty batch
                     $batch->decrement('sisa_qty', $ambil);
                 }
 
@@ -107,7 +104,6 @@ class PenjualanController extends Controller
                     'laba'       => $laba,
                 ];
 
-                // Kurangi stok total barang
                 Barang::where('id', $item['barang_id'])->decrement('stok_total', $qty);
             }
 
@@ -136,11 +132,52 @@ class PenjualanController extends Controller
         return view('penjualan.keluar.show', compact('penjualan'));
     }
 
+    public function keluarDestroy(Penjualan $penjualan)
+    {
+        DB::transaction(function () use ($penjualan) {
+            $penjualan->load('detail');
+
+            foreach ($penjualan->detail as $detail) {
+                // Kembalikan stok total barang
+                Barang::where('id', $detail->barang_id)
+                    ->increment('stok_total', $detail->qty);
+
+                // Kembalikan sisa_qty di pembelian detail (FIFO rollback)
+                // Ambil batch FIFO dari yang terbaru dulu (reverse)
+                $sisaKembali = $detail->qty;
+
+                $batches = PembelianDetail::where('barang_id', $detail->barang_id)
+                    ->whereColumn('sisa_qty', '<', 'qty_masuk')
+                    ->orderBy('tanggal_masuk', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->get();
+
+                foreach ($batches as $batch) {
+                    if ($sisaKembali <= 0) break;
+                    $kapasitas = $batch->qty_masuk - $batch->sisa_qty;
+                    $kembali   = min($kapasitas, $sisaKembali);
+                    $batch->increment('sisa_qty', $kembali);
+
+                    // Kembalikan stok di barang_batch juga
+                    BarangBatch::where('barang_id', $detail->barang_id)
+                        ->where('no_batch', 'like', '%-' . $batch->id)
+                        ->increment('stok', $kembali);
+
+                    $sisaKembali -= $kembali;
+                }
+            }
+
+            $penjualan->delete();
+        });
+
+        return redirect()->route('penjualan.keluar.index')->with('success', 'Penjualan berhasil dihapus.');
+    }
+
     // ==================== HISTORY ====================
     public function historyIndex(Request $request)
     {
         $query = Penjualan::query();
-        if ($request->dari) $query->whereDate('tanggal_penjualan', '>=', $request->dari);
+        if ($request->dari)   $query->whereDate('tanggal_penjualan', '>=', $request->dari);
         if ($request->sampai) $query->whereDate('tanggal_penjualan', '<=', $request->sampai);
         $penjualan = $query->orderByDesc('tanggal_penjualan')->paginate(20)->withQueryString();
         return view('penjualan.history', compact('penjualan'));

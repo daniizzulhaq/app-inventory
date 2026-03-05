@@ -41,32 +41,68 @@
                         <th>Supplier</th>
                         <th>Tanggal</th>
                         <th>Total Harga</th>
+                        <th>Expired</th>
                         <th>Keterangan</th>
-                        <th width="120">Aksi</th>
+                        <th width="150">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($pembelian as $i => $p)
+                    @php
+                        $expData = $expiredStatus[$p->id] ?? ['status' => 'no_batch', 'tanggal' => null];
+                        if (!is_array($expData)) {
+                            $expData = ['status' => $expData, 'tanggal' => null];
+                        }
+                        $tgl = !empty($expData['tanggal']) ? \Carbon\Carbon::parse($expData['tanggal'])->format('d/m/Y') : null;
+                    @endphp
                     <tr>
                         <td>{{ $pembelian->firstItem() + $i }}</td>
                         <td><span class="badge bg-primary">{{ $p->no_pembelian }}</span></td>
                         <td class="fw-semibold">{{ $p->supplier->nama_supplier ?? '-' }}</td>
                         <td>{{ $p->tanggal_pembelian->format('d/m/Y') }}</td>
                         <td>Rp {{ number_format($p->total_harga) }}</td>
+                        <td>
+                            @if($expData['status'] === 'expired')
+                                <span class="badge bg-danger">
+                                    <i class="bi bi-exclamation-triangle-fill me-1"></i>Expired
+                                </span>
+                                @if($tgl)<div class="small text-danger">{{ $tgl }}</div>@endif
+                            @elseif($expData['status'] === 'warning')
+                                <span class="badge bg-warning text-dark">
+                                    <i class="bi bi-clock me-1"></i>Segera Expired
+                                </span>
+                                @if($tgl)<div class="small text-warning fw-semibold">{{ $tgl }}</div>@endif
+                            @elseif($expData['status'] === 'aman')
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle me-1"></i>Aman
+                                </span>
+                                @if($tgl)<div class="small text-muted">{{ $tgl }}</div>@endif
+                            @else
+                                <span class="text-muted small">—</span>
+                            @endif
+                        </td>
                         <td>{{ $p->keterangan ?? '-' }}</td>
                         <td>
-                            <a href="{{ route('pembelian.masuk.show', $p) }}" class="btn btn-sm btn-info text-white">
+                            <a href="{{ route('pembelian.masuk.show', $p) }}"
+                               class="btn btn-sm btn-info text-white" title="Detail">
                                 <i class="bi bi-eye"></i>
                             </a>
-                            <form action="{{ route('pembelian.masuk.destroy', $p) }}" method="POST" class="d-inline"
+                            <a href="{{ route('pembelian.masuk.edit', $p) }}"
+                               class="btn btn-sm btn-warning" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form action="{{ route('pembelian.masuk.destroy', $p) }}" method="POST"
+                                  class="d-inline"
                                   onsubmit="return confirm('Hapus pembelian {{ $p->no_pembelian }}?')">
                                 @csrf @method('DELETE')
-                                <button class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-sm btn-danger" title="Hapus">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </form>
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="7" class="text-center py-4 text-muted">Belum ada data pembelian</td></tr>
+                    <tr><td colspan="8" class="text-center py-4 text-muted">Belum ada data pembelian</td></tr>
                     @endforelse
                 </tbody>
             </table>

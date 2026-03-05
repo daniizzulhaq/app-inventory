@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Tambah Supplier')
 @section('breadcrumb')
-    <li class="breadcrumb-item"><a href="{{ route('supplier.index') }}" class="text-decoration-none">Supplier</a></li>
+    <li class="breadcrumb-item"><a href="{{ route('master.supplier.index') }}" class="text-decoration-none">Supplier</a></li>
     <li class="breadcrumb-item active">Tambah</li>
 @endsection
 
@@ -11,7 +11,7 @@
         <div class="card">
             <div class="card-header"><i class="bi bi-plus-circle me-2"></i>Tambah Supplier Baru</div>
             <div class="card-body">
-                <form action="{{ route('supplier.store') }}" method="POST">
+                <form action="{{ route('master.supplier.store') }}" method="POST">
                     @csrf
                     <div class="row g-3">
                         <div class="col-md-6">
@@ -54,7 +54,7 @@
                     <hr>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Simpan</button>
-                        <a href="{{ route('supplier.index') }}" class="btn btn-outline-secondary">Batal</a>
+                        <a href="{{ route('master.supplier.index') }}" class="btn btn-outline-secondary">Batal</a>
                     </div>
                 </form>
             </div>

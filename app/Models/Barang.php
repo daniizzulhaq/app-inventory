@@ -32,6 +32,29 @@ class Barang extends Model
         return $this->hasMany(PenjualanDetail::class);
     }
 
+    public function batches()
+{
+    return $this->hasMany(BarangBatch::class)->orderBy('expired_date');
+}
+
+public function activeBatches()
+{
+    return $this->hasMany(BarangBatch::class)
+                ->where('stok', '>', 0)
+                ->orderBy('expired_date');
+}
+
+// ── Accessor: status expired terparah dari semua batch aktif ──
+public function getStatusExpiredAttribute(): string
+{
+    $batches = $this->batches->where('stok', '>', 0);
+    if ($batches->isEmpty()) return 'no_batch';
+
+    if ($batches->contains(fn($b) => $b->status_expired === 'expired'))  return 'expired';
+    if ($batches->contains(fn($b) => $b->status_expired === 'warning'))  return 'warning';
+    return 'aman';
+}
+
     // Ambil batch FIFO (stok tertua dengan sisa_qty > 0)
     public function fifoBatches()
     {

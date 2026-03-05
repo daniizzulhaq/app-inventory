@@ -9,15 +9,20 @@
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-box2 me-2"></i>Data Barang</span>
-        <a href="{{ route('master.barang.create') }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-circle me-1"></i>Tambah Barang
-        </a>
+        <div class="d-flex gap-2">
+            <a href="{{ route('master.barang.batch.monitor') }}" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-exclamation-triangle me-1"></i>Monitor Expired
+            </a>
+            <a href="{{ route('master.barang.create') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-plus-circle me-1"></i>Tambah Barang
+            </a>
+        </div>
     </div>
     <div class="card-body">
-        <!-- Search -->
         <form method="GET" class="mb-3">
             <div class="input-group" style="max-width:320px">
-                <input type="text" name="search" class="form-control form-control-sm" placeholder="Cari kode/nama barang..." value="{{ request('search') }}">
+                <input type="text" name="search" class="form-control form-control-sm"
+                       placeholder="Cari kode/nama barang..." value="{{ request('search') }}">
                 <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-search"></i></button>
             </div>
         </form>
@@ -34,11 +39,17 @@
                         <th>Stok</th>
                         <th>Min Stok</th>
                         <th>Harga Jual</th>
-                        <th width="120">Aksi</th>
+                       
+                        <th width="160">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($barang as $i => $b)
+                    @php
+                        $activeBatches = $b->batches->where('stok', '>', 0);
+                        $hasExpired    = $activeBatches->contains(fn($x) => $x->status_expired === 'expired');
+                        $hasWarning    = $activeBatches->contains(fn($x) => $x->status_expired === 'warning');
+                    @endphp
                     <tr>
                         <td>{{ $barang->firstItem() + $i }}</td>
                         <td><span class="badge bg-secondary">{{ $b->kode_barang }}</span></td>
@@ -54,17 +65,36 @@
                         </td>
                         <td class="text-muted">{{ $b->stok_minimum }}</td>
                         <td>Rp {{ number_format($b->harga_jual) }}</td>
+
+                        {{-- Kolom Expired --}}
+                       
+                        </td>
+
                         <td>
-                            <a href="{{ route('master.barang.edit', $b) }}" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a>
-                            <form action="{{ route('master.barang.destroy', $b) }}" method="POST" class="d-inline"
+                            {{-- Tombol Show --}}
+                            <a href="{{ route('master.barang.show', $b) }}"
+                               class="btn btn-sm btn-info text-white" title="Detail">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                           
+                            <a href="{{ route('master.barang.edit', $b) }}"
+                               class="btn btn-sm btn-warning" title="Edit">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form action="{{ route('master.barang.destroy', $b) }}" method="POST"
+                                  class="d-inline"
                                   onsubmit="return confirm('Hapus barang {{ $b->nama_barang }}?')">
                                 @csrf @method('DELETE')
-                                <button class="btn btn-sm btn-danger"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-sm btn-danger" title="Hapus">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </form>
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="9" class="text-center py-4 text-muted">Belum ada data barang</td></tr>
+                    <tr>
+                        <td colspan="10" class="text-center py-4 text-muted">Belum ada data barang</td>
+                    </tr>
                     @endforelse
                 </tbody>
             </table>
