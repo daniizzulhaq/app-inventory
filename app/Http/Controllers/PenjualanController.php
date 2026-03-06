@@ -9,18 +9,20 @@ use App\Models\Penjualan;
 use App\Models\PenjualanDetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class PenjualanController extends Controller
 {
-    // ==================== KELUAR (FIFO) ====================
     public function keluarIndex(Request $request)
     {
         $query = Penjualan::query();
         if ($request->dari)   $query->whereDate('tanggal_penjualan', '>=', $request->dari);
         if ($request->sampai) $query->whereDate('tanggal_penjualan', '<=', $request->sampai);
         if ($request->search) {
-            $query->where('no_invoice', 'like', '%' . $request->search . '%')
+            $query->where(function ($q) use ($request) {
+                $q->where('no_invoice', 'like', '%' . $request->search . '%')
                   ->orWhere('nama_pembeli', 'like', '%' . $request->search . '%');
+            });
         }
         $penjualan = $query->orderByDesc('tanggal_penjualan')->paginate(15)->withQueryString();
         return view('penjualan.keluar.index', compact('penjualan'));
@@ -32,7 +34,67 @@ class PenjualanController extends Controller
         $noInvoice = 'INV-' . date('Ymd') . '-' . str_pad(
             (Penjualan::whereDate('created_at', today())->count() + 1), 3, '0', STR_PAD_LEFT
         );
-        return view('penjualan.keluar.create', compact('barang', 'noInvoice'));
+
+        $batchPerBarang = [];
+        foreach ($barang as $b) {
+            $batchPerBarang[$b->id] = $this->getBatchListForBarang($b->id);
+        }
+
+        return view('penjualan.keluar.create', compact('barang', 'noInvoice', 'batchPerBarang'));
+    }
+
+    protected function tglStr($val): string
+    {
+        if ($val instanceof \Carbon\Carbon) return $val->format('Y-m-d');
+        return substr((string) $val, 0, 10);
+    }
+
+    protected function getBatchListForBarang(int $barangId): array
+    {
+        $pembelianDetails = PembelianDetail::with('pembelian')
+            ->where('barang_id', $barangId)
+            ->where('sisa_qty', '>', 0)
+            ->orderBy('tanggal_masuk', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $batchGrouped   = [];
+        $usedPerTanggal = [];
+
+        BarangBatch::where('barang_id', $barangId)
+            ->orderBy('tanggal_masuk', 'asc')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->each(function ($bb) use (&$batchGrouped) {
+                $key = $this->tglStr($bb->tanggal_masuk);
+                $batchGrouped[$key][] = $bb;
+            });
+
+        $result = [];
+        foreach ($pembelianDetails as $pd) {
+            $tgl   = $this->tglStr($pd->tanggal_masuk);
+            $idx   = $usedPerTanggal[$tgl] ?? 0;
+            $batch = $batchGrouped[$tgl][$idx] ?? null;
+            $usedPerTanggal[$tgl] = $idx + 1;
+
+            $expiredDate = null;
+            $status      = 'no_expired';
+            if ($batch && $batch->expired_date) {
+                $expiredDate = Carbon::parse($batch->expired_date)->format('d/m/Y');
+                $status      = $batch->status_expired ?? 'aman';
+            }
+
+            $result[] = [
+                'id'            => $pd->id,
+                'no_batch'      => $batch->no_batch ?? ($pd->pembelian->no_pembelian ?? 'PD-' . $pd->id),
+                'sisa_qty'      => $pd->sisa_qty,
+                'expired_date'  => $expiredDate,
+                'status'        => $status,
+                'tanggal_masuk' => Carbon::parse($pd->tanggal_masuk)->format('d/m/Y'),
+            ];
+        }
+
+        return $result;
     }
 
     public function keluarStore(Request $request)
@@ -46,16 +108,20 @@ class PenjualanController extends Controller
         ]);
 
         foreach ($request->items as $item) {
-            $barang      = Barang::find($item['barang_id']);
-            $stokMinimum = $barang->stok_minimum ?? 10;
-            $sisaStok    = $barang->stok_total - $item['qty'];
+            $barang   = Barang::find($item['barang_id']);
+            $sisaStok = $barang->stok_total - $item['qty'];
 
             if ($barang->stok_total < $item['qty']) {
-                return back()->with('error', "Stok {$barang->nama_barang} tidak mencukupi. Stok saat ini: {$barang->stok_total}.")->withInput();
+                return back()->with('error', "Stok {$barang->nama_barang} tidak mencukupi. Stok: {$barang->stok_total}.")->withInput();
             }
-
-            if ($sisaStok < $stokMinimum) {
-                return back()->with('error', "Penjualan {$barang->nama_barang} tidak dapat diproses. Sisa stok setelah penjualan ({$sisaStok}) akan berada di bawah batas minimum ({$stokMinimum}).")->withInput();
+            if ($sisaStok < ($barang->stok_minimum ?? 0)) {
+                return back()->with('error', "Stok {$barang->nama_barang} akan di bawah minimum ({$barang->stok_minimum}).")->withInput();
+            }
+            if (!empty($item['batches'])) {
+                $totalBatchQty = collect($item['batches'])->sum('qty');
+                if ($totalBatchQty != $item['qty']) {
+                    return back()->with('error', "Total qty batch untuk {$barang->nama_barang} ({$totalBatchQty}) tidak sama dengan qty item ({$item['qty']}).")->withInput();
+                }
             }
         }
 
@@ -69,39 +135,87 @@ class PenjualanController extends Controller
             $detailData = [];
 
             foreach ($request->items as $item) {
-                $qty       = $item['qty'];
-                $hargaJual = $item['harga_jual'];
-                $subtotal  = $qty * $hargaJual;
+                $qty        = $item['qty'];
+                $hargaJual  = $item['harga_jual'];
+                $subtotal   = $qty * $hargaJual;
                 $totalHarga += $subtotal;
+                $hpp        = 0;
+                $expiredInfo = []; // <-- kumpulkan info expired untuk disimpan
 
-                // FIFO
-                $hpp            = 0;
-                $sisaQtyDiambil = $qty;
+                if (!empty($item['batches'])) {
+                    // ===== MODE MANUAL =====
+                    foreach ($item['batches'] as $batchItem) {
+                        $pd = PembelianDetail::find($batchItem['batch_id']);
+                        if (!$pd) continue;
 
-                $batches = PembelianDetail::where('barang_id', $item['barang_id'])
-                    ->where('sisa_qty', '>', 0)
-                    ->orderBy('tanggal_masuk', 'asc')
-                    ->orderBy('id', 'asc')
-                    ->get();
+                        $ambil = min($pd->sisa_qty, (int) $batchItem['qty']);
+                        $hpp  += $ambil * $pd->harga_beli;
+                        $pd->decrement('sisa_qty', $ambil);
 
-                foreach ($batches as $batch) {
-                    if ($sisaQtyDiambil <= 0) break;
-                    $ambil = min($batch->sisa_qty, $sisaQtyDiambil);
-                    $hpp  += $ambil * $batch->harga_beli;
-                    $sisaQtyDiambil -= $ambil;
-                    $batch->decrement('sisa_qty', $ambil);
+                        // Cari expired_date dari barang_batch
+                        $expiredDate = null;
+                        $status      = 'no_expired';
+                        $bb = BarangBatch::where('barang_id', $pd->barang_id)
+                            ->whereDate('tanggal_masuk', $this->tglStr($pd->tanggal_masuk))
+                            ->orderBy('id', 'asc')
+                            ->first();
+                        if ($bb && $bb->expired_date) {
+                            $expiredDate = Carbon::parse($bb->expired_date)->format('d/m/Y');
+                            $status      = $bb->status_expired ?? 'aman';
+                        }
+
+                        $expiredInfo[] = [
+                            'expired_date' => $expiredDate,
+                            'qty'          => $ambil,
+                            'status'       => $status,
+                        ];
+                    }
+                } else {
+                    // ===== MODE FIFO OTOMATIS =====
+                    $sisaQtyDiambil = $qty;
+                    $pdBatches = PembelianDetail::where('barang_id', $item['barang_id'])
+                        ->where('sisa_qty', '>', 0)
+                        ->orderBy('tanggal_masuk', 'asc')
+                        ->orderBy('id', 'asc')
+                        ->get();
+
+                    foreach ($pdBatches as $pd) {
+                        if ($sisaQtyDiambil <= 0) break;
+                        $ambil = min($pd->sisa_qty, $sisaQtyDiambil);
+                        $hpp  += $ambil * $pd->harga_beli;
+                        $sisaQtyDiambil -= $ambil;
+                        $pd->decrement('sisa_qty', $ambil);
+
+                        // Cari expired_date dari barang_batch
+                        $expiredDate = null;
+                        $status      = 'no_expired';
+                        $bb = BarangBatch::where('barang_id', $pd->barang_id)
+                            ->whereDate('tanggal_masuk', $this->tglStr($pd->tanggal_masuk))
+                            ->orderBy('id', 'asc')
+                            ->first();
+                        if ($bb && $bb->expired_date) {
+                            $expiredDate = Carbon::parse($bb->expired_date)->format('d/m/Y');
+                            $status      = $bb->status_expired ?? 'aman';
+                        }
+
+                        $expiredInfo[] = [
+                            'expired_date' => $expiredDate,
+                            'qty'          => $ambil,
+                            'status'       => $status,
+                        ];
+                    }
                 }
 
                 $totalHpp += $hpp;
-                $laba      = $subtotal - $hpp;
 
                 $detailData[] = [
-                    'barang_id'  => $item['barang_id'],
-                    'qty'        => $qty,
-                    'harga_jual' => $hargaJual,
-                    'hpp'        => $hpp,
-                    'subtotal'   => $subtotal,
-                    'laba'       => $laba,
+                    'barang_id'    => $item['barang_id'],
+                    'qty'          => $qty,
+                    'harga_jual'   => $hargaJual,
+                    'hpp'          => $hpp,
+                    'subtotal'     => $subtotal,
+                    'laba'         => $subtotal - $hpp,
+                    'expired_info' => json_encode($expiredInfo), // <-- simpan ke DB
                 ];
 
                 Barang::where('id', $item['barang_id'])->decrement('stok_total', $qty);
@@ -129,7 +243,18 @@ class PenjualanController extends Controller
     public function keluarShow(Penjualan $penjualan)
     {
         $penjualan->load('detail.barang.satuan');
-        return view('penjualan.keluar.show', compact('penjualan'));
+
+        // Baca langsung dari kolom expired_info yang sudah disimpan
+        $expiredPerDetail = [];
+        foreach ($penjualan->detail as $detail) {
+            $info = $detail->expired_info;
+            if (is_string($info)) {
+                $info = json_decode($info, true) ?? [];
+            }
+            $expiredPerDetail[$detail->id] = $info ?? [];
+        }
+
+        return view('penjualan.keluar.show', compact('penjualan', 'expiredPerDetail'));
     }
 
     public function keluarDestroy(Penjualan $penjualan)
@@ -138,14 +263,9 @@ class PenjualanController extends Controller
             $penjualan->load('detail');
 
             foreach ($penjualan->detail as $detail) {
-                // Kembalikan stok total barang
-                Barang::where('id', $detail->barang_id)
-                    ->increment('stok_total', $detail->qty);
+                Barang::where('id', $detail->barang_id)->increment('stok_total', $detail->qty);
 
-                // Kembalikan sisa_qty di pembelian detail (FIFO rollback)
-                // Ambil batch FIFO dari yang terbaru dulu (reverse)
                 $sisaKembali = $detail->qty;
-
                 $batches = PembelianDetail::where('barang_id', $detail->barang_id)
                     ->whereColumn('sisa_qty', '<', 'qty_masuk')
                     ->orderBy('tanggal_masuk', 'desc')
@@ -157,12 +277,6 @@ class PenjualanController extends Controller
                     $kapasitas = $batch->qty_masuk - $batch->sisa_qty;
                     $kembali   = min($kapasitas, $sisaKembali);
                     $batch->increment('sisa_qty', $kembali);
-
-                    // Kembalikan stok di barang_batch juga
-                    BarangBatch::where('barang_id', $detail->barang_id)
-                        ->where('no_batch', 'like', '%-' . $batch->id)
-                        ->increment('stok', $kembali);
-
                     $sisaKembali -= $kembali;
                 }
             }
@@ -173,7 +287,6 @@ class PenjualanController extends Controller
         return redirect()->route('penjualan.keluar.index')->with('success', 'Penjualan berhasil dihapus.');
     }
 
-    // ==================== HISTORY ====================
     public function historyIndex(Request $request)
     {
         $query = Penjualan::query();

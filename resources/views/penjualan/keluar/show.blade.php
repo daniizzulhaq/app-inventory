@@ -33,7 +33,7 @@
 
 @section('content')
 <div class="row justify-content-center">
-    <div class="col-md-9">
+    <div class="col-md-10">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <span><i class="bi bi-file-text me-2"></i>Detail Penjualan: {{ $penjualan->no_invoice }}</span>
@@ -78,12 +78,13 @@
                     <table class="table table-bordered align-middle">
                         <thead class="table-light">
                             <tr>
-                                <th width="50">No</th>
+                                <th width="40">No</th>
                                 <th>Nama Barang</th>
                                 <th>Satuan</th>
                                 <th>Qty</th>
                                 <th>Harga Jual</th>
                                 <th>HPP</th>
+                                <th>Expired (Batch)</th>
                                 <th>Subtotal</th>
                                 <th>Laba</th>
                             </tr>
@@ -97,6 +98,33 @@
                                 <td>{{ $d->qty }}</td>
                                 <td>Rp {{ number_format($d->harga_jual) }}</td>
                                 <td>Rp {{ number_format($d->hpp) }}</td>
+                                <td>
+                                    {{-- Tampilkan expired dari batch FIFO yang diambil saat penjualan --}}
+                                    @if(isset($expiredPerDetail[$d->id]) && count($expiredPerDetail[$d->id]) > 0)
+                                        @foreach($expiredPerDetail[$d->id] as $exp)
+                                            @php
+                                                $badgeClass = match($exp['status']) {
+                                                    'expired'    => 'bg-danger',
+                                                    'warning'    => 'bg-warning text-dark',
+                                                    'aman'       => 'bg-success',
+                                                    default      => 'bg-light text-muted border',
+                                                };
+                                                $icon = match($exp['status']) {
+                                                    'expired'    => '✗',
+                                                    'warning'    => '⚠',
+                                                    'aman'       => '✓',
+                                                    default      => '—',
+                                                };
+                                            @endphp
+                                            <span class="badge {{ $badgeClass }} me-1">
+                                                {{ $icon }} {{ $exp['expired_date'] ?? 'No Exp' }}
+                                                <small>({{ $exp['qty'] }})</small>
+                                            </span>
+                                        @endforeach
+                                    @else
+                                        <span class="text-muted small">—</span>
+                                    @endif
+                                </td>
                                 <td>Rp {{ number_format($d->subtotal) }}</td>
                                 <td>
                                     @if($d->laba >= 0)
@@ -110,7 +138,7 @@
                         </tbody>
                         <tfoot>
                             <tr class="fw-bold">
-                                <td colspan="6" class="text-end">Total</td>
+                                <td colspan="7" class="text-end">Total</td>
                                 <td>Rp {{ number_format($penjualan->total_harga) }}</td>
                                 <td class="{{ $penjualan->laba >= 0 ? 'text-success' : 'text-danger' }}">
                                     Rp {{ number_format($penjualan->laba) }}
@@ -166,6 +194,7 @@
                     <th style="border: 1px solid #ccc; padding: 8px; text-align: left;">Nama Barang</th>
                     <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">Satuan</th>
                     <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">Qty</th>
+                    <th style="border: 1px solid #ccc; padding: 8px; text-align: center;">Expired</th>
                     <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Harga Jual</th>
                     <th style="border: 1px solid #ccc; padding: 8px; text-align: right;">Subtotal</th>
                 </tr>
@@ -177,6 +206,19 @@
                     <td style="border: 1px solid #ccc; padding: 7px;">{{ $d->barang->nama_barang ?? '-' }}</td>
                     <td style="border: 1px solid #ccc; padding: 7px; text-align: center;">{{ $d->barang->satuan->nama_satuan ?? '-' }}</td>
                     <td style="border: 1px solid #ccc; padding: 7px; text-align: center;">{{ $d->qty }}</td>
+                    <td style="border: 1px solid #ccc; padding: 7px; text-align: center; font-size: 12px;">
+                        @if(isset($expiredPerDetail[$d->id]) && count($expiredPerDetail[$d->id]) > 0)
+                            @foreach($expiredPerDetail[$d->id] as $exp)
+                                @if($exp['expired_date'])
+                                    {{ $exp['expired_date'] }}@if(!$loop->last), @endif
+                                @else
+                                    —
+                                @endif
+                            @endforeach
+                        @else
+                            —
+                        @endif
+                    </td>
                     <td style="border: 1px solid #ccc; padding: 7px; text-align: right;">Rp {{ number_format($d->harga_jual) }}</td>
                     <td style="border: 1px solid #ccc; padding: 7px; text-align: right;">Rp {{ number_format($d->subtotal) }}</td>
                 </tr>
@@ -184,7 +226,7 @@
             </tbody>
             <tfoot>
                 <tr>
-                    <td colspan="5" style="border: 1px solid #ccc; padding: 8px; text-align: right; font-weight: bold;">TOTAL</td>
+                    <td colspan="6" style="border: 1px solid #ccc; padding: 8px; text-align: right; font-weight: bold;">TOTAL</td>
                     <td style="border: 1px solid #ccc; padding: 8px; text-align: right; font-weight: bold;">Rp {{ number_format($penjualan->total_harga) }}</td>
                 </tr>
             </tfoot>

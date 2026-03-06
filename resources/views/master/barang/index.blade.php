@@ -10,9 +10,6 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-box2 me-2"></i>Data Barang</span>
         <div class="d-flex gap-2">
-            <a href="{{ route('master.barang.batch.monitor') }}" class="btn btn-outline-danger btn-sm">
-                <i class="bi bi-exclamation-triangle me-1"></i>Monitor Expired
-            </a>
             <a href="{{ route('master.barang.create') }}" class="btn btn-primary btn-sm">
                 <i class="bi bi-plus-circle me-1"></i>Tambah Barang
             </a>

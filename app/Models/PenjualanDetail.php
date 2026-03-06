@@ -6,9 +6,21 @@ use Illuminate\Database\Eloquent\Model;
 
 class PenjualanDetail extends Model
 {
-     protected $table = 'penjualan_detail';
+    protected $table = 'penjualan_detail';
+
     protected $fillable = [
-        'penjualan_id', 'barang_id', 'qty', 'harga_jual', 'hpp', 'subtotal', 'laba'
+        'penjualan_id',
+        'barang_id',
+        'qty',
+        'harga_jual',
+        'hpp',
+        'subtotal',
+        'laba',
+        'expired_info', // <-- tambahkan ini
+    ];
+
+    protected $casts = [
+        'expired_info' => 'array', // otomatis decode JSON jadi array
     ];
 
     public function penjualan()
