@@ -117,9 +117,7 @@
     <div class="card-body text-center py-5 text-muted">
         <i class="bi bi-inbox display-4"></i>
         <p class="mt-2">Belum ada batch untuk barang ini</p>
-        <a href="{{ route('master.barang.batch.create', $barang) }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus-circle me-1"></i>Tambah Batch
-        </a>
+       
     </div>
 </div>
 @endif
